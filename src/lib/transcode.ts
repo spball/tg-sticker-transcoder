@@ -8,8 +8,10 @@ import {
   validateInspection
 } from "./presets";
 import {
+  clearRecentFFmpegLogs,
   getFFmpegRuntime,
   getRecentFFmpegLogs,
+  recycleFFmpegRuntimeAfterJob,
   setActiveProgressHandler
 } from "./ffmpegRuntime";
 import { inspectVideoBlob } from "./videoInspection";
@@ -27,6 +29,18 @@ interface AttemptResult {
 }
 
 export async function transcodeFile(
+  file: File,
+  mode: ConversionMode,
+  options: TranscodeOptions = {}
+): Promise<TranscodeResult> {
+  try {
+    return await transcodeFileInternal(file, mode, options);
+  } finally {
+    recycleFFmpegRuntimeAfterJob();
+  }
+}
+
+async function transcodeFileInternal(
   file: File,
   mode: ConversionMode,
   options: TranscodeOptions = {}
@@ -194,7 +208,11 @@ async function runEncodingAttempt({
   ];
 
   try {
-    await ffmpeg.exec(args);
+    clearRecentFFmpegLogs();
+    const result = await ffmpeg.exec(args);
+    if (result !== 0) {
+      return undefined;
+    }
     const data = await ffmpeg.readFile(outputName);
     const blob = new Blob([toBlobPart(data)], { type: "video/webm" });
     return {
