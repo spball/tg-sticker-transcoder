@@ -7,10 +7,9 @@ import {
   writeFileSync
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
-const require = createRequire(import.meta.url);
-const coreEntry = require.resolve("@ffmpeg/core");
+const coreEntry = fileURLToPath(import.meta.resolve("@ffmpeg/core"));
 const coreDir = dirname(coreEntry);
 const outputDir = join(process.cwd(), "public", "ffmpeg-core");
 const chunkSize = 20 * 1024 * 1024;

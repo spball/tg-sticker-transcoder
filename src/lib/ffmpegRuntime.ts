@@ -5,6 +5,7 @@ let loadPromise: Promise<FFmpeg> | undefined;
 let activeProgress: ((progress: number) => void) | undefined;
 let wasmBlobUrl: string | undefined;
 let recentLogs: string[] = [];
+const FFMPEG_ASSET_VERSION = "esm-core-20260528";
 
 interface WasmManifest {
   totalSize: number;
@@ -23,7 +24,15 @@ export async function getFFmpegRuntime(): Promise<FFmpeg> {
     return loadPromise;
   }
 
-  loadPromise = loadRuntime();
+  loadPromise = loadRuntime().catch((error) => {
+    ffmpeg = undefined;
+    loadPromise = undefined;
+    if (wasmBlobUrl) {
+      URL.revokeObjectURL(wasmBlobUrl);
+      wasmBlobUrl = undefined;
+    }
+    throw error;
+  });
   return loadPromise;
 }
 
@@ -58,7 +67,7 @@ async function loadRuntime(): Promise<FFmpeg> {
   const coreBaseUrl = new URL(`${import.meta.env.BASE_URL}ffmpeg-core/`, window.location.origin);
   const wasmURL = await getChunkedWasmUrl(coreBaseUrl);
   await instance.load({
-    coreURL: new URL("ffmpeg-core.js", coreBaseUrl).toString(),
+    coreURL: versionedAssetUrl("ffmpeg-core.js", coreBaseUrl).toString(),
     wasmURL
   });
 
@@ -75,7 +84,7 @@ async function getChunkedWasmUrl(coreBaseUrl: URL): Promise<string> {
     return wasmBlobUrl;
   }
 
-  const manifestResponse = await fetch(new URL("ffmpeg-core.wasm.json", coreBaseUrl));
+  const manifestResponse = await fetch(versionedAssetUrl("ffmpeg-core.wasm.json", coreBaseUrl));
   if (!manifestResponse.ok) {
     throw new Error("无法加载 FFmpeg WASM 分片清单");
   }
@@ -83,7 +92,7 @@ async function getChunkedWasmUrl(coreBaseUrl: URL): Promise<string> {
   const manifest = (await manifestResponse.json()) as WasmManifest;
   const chunks = await Promise.all(
     manifest.parts.map(async (part) => {
-      const response = await fetch(new URL(part.file, coreBaseUrl));
+      const response = await fetch(versionedAssetUrl(part.file, coreBaseUrl));
       if (!response.ok) {
         throw new Error(`无法加载 FFmpeg WASM 分片：${part.file}`);
       }
@@ -110,4 +119,10 @@ async function getChunkedWasmUrl(coreBaseUrl: URL): Promise<string> {
 
   wasmBlobUrl = URL.createObjectURL(new Blob([wasm.buffer], { type: "application/wasm" }));
   return wasmBlobUrl;
+}
+
+function versionedAssetUrl(path: string, baseUrl: URL): URL {
+  const url = new URL(path, baseUrl);
+  url.searchParams.set("v", FFMPEG_ASSET_VERSION);
+  return url;
 }
