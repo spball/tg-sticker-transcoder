@@ -8,6 +8,11 @@ import {
 } from "./presets";
 import { inspectVideoBlob } from "./videoInspection";
 import { readGifInfo } from "./gif";
+import {
+  closeGifAnimation,
+  decodeGifAnimation,
+  getGifFrameAt
+} from "./gifFrames";
 import { finalizeWebmContainer } from "./webmFinalize";
 
 interface SourceInfo {
@@ -152,6 +157,48 @@ async function recordAttempt(
 }
 
 function recordGif(
+  file: File,
+  sourceInfo: SourceInfo,
+  canvas: HTMLCanvasElement,
+  context: CanvasRenderingContext2D,
+  fps: number,
+  bitrateKbps: number,
+  mode: ConversionMode,
+  onProgress?: (progress: number) => void
+): Promise<Blob> {
+  return recordDecodedGif(file, sourceInfo, canvas, context, fps, bitrateKbps, mode, onProgress).catch(() =>
+    recordGifImageFallback(file, sourceInfo, canvas, context, fps, bitrateKbps, mode, onProgress)
+  );
+}
+
+async function recordDecodedGif(
+  file: File,
+  sourceInfo: SourceInfo,
+  canvas: HTMLCanvasElement,
+  context: CanvasRenderingContext2D,
+  fps: number,
+  bitrateKbps: number,
+  mode: ConversionMode,
+  onProgress?: (progress: number) => void
+): Promise<Blob> {
+  const animation = await decodeGifAnimation(file);
+  if (!animation) {
+    throw new Error("当前浏览器无法逐帧解码 GIF");
+  }
+
+  const durationMs = Math.min(3000, Math.max(120, animation.durationMs || sourceInfo.durationMs));
+  try {
+    return await recordCanvas(canvas, fps, bitrateKbps, durationMs, (elapsedMs) => {
+      const frame = getGifFrameAt(animation, elapsedMs);
+      drawSource(context, frame, sourceInfo.width, sourceInfo.height, canvas.width, canvas.height, mode);
+      onProgress?.(Math.min(0.95, elapsedMs / durationMs));
+    });
+  } finally {
+    closeGifAnimation(animation);
+  }
+}
+
+function recordGifImageFallback(
   file: File,
   sourceInfo: SourceInfo,
   canvas: HTMLCanvasElement,
