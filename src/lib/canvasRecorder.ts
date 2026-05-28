@@ -8,6 +8,7 @@ import {
 } from "./presets";
 import { inspectVideoBlob } from "./videoInspection";
 import { readGifInfo } from "./gif";
+import { finalizeWebmContainer } from "./webmFinalize";
 
 interface SourceInfo {
   width: number;
@@ -30,7 +31,8 @@ export async function transcodeWithCanvasRecorder(
   let smallestBlob: Blob | undefined;
 
   for (const step of getCompressionLadder(mode)) {
-    const blob = await recordAttempt(file, mode, sourceInfo, step.fps, step.bitrateKbps, onProgress);
+    const recordedBlob = await recordAttempt(file, mode, sourceInfo, step.fps, step.bitrateKbps, onProgress);
+    const blob = await finalizeWebmContainer(recordedBlob);
     if (!smallestBlob || blob.size < smallestBlob.size) {
       smallestBlob = blob;
     }
