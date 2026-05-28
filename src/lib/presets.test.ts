@@ -8,6 +8,7 @@ import {
   TELEGRAM_MAX_BYTES,
   validateInspection
 } from "./presets";
+import { parseGifInfo } from "./gif";
 
 describe("preset helpers", () => {
   it("creates a stable compression ladder under 30 fps", () => {
@@ -43,5 +44,21 @@ describe("preset helpers", () => {
     expect(
       validateInspection("sticker", { width: 511, height: 512, durationSeconds: 3.3 }, TELEGRAM_MAX_BYTES + 1)
     ).toEqual(expect.arrayContaining(["时长超过 3 秒"]));
+  });
+
+  it("parses GIF metadata needed by the canvas recorder", () => {
+    const bytes = new Uint8Array([
+      0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x02, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00,
+      0x21, 0xf9, 0x04, 0x00, 0x05, 0x00, 0x00, 0x00,
+      0x2c, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x03, 0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00,
+      0x3b
+    ]);
+
+    expect(parseGifInfo(bytes)).toEqual({
+      width: 2,
+      height: 3,
+      durationMs: 50,
+      frames: 1
+    });
   });
 });

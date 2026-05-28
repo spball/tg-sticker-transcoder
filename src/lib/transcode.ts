@@ -12,6 +12,7 @@ import {
   setActiveProgressHandler
 } from "./ffmpegRuntime";
 import { inspectVideoBlob } from "./videoInspection";
+import { transcodeWithCanvasRecorder } from "./canvasRecorder";
 
 interface TranscodeOptions {
   onProgress?: (progress: number) => void;
@@ -29,6 +30,14 @@ export async function transcodeFile(
   mode: ConversionMode,
   options: TranscodeOptions = {}
 ): Promise<TranscodeResult> {
+  if (canTryCanvasRecorder(file)) {
+    try {
+      return await transcodeWithCanvasRecorder(file, mode, options.onProgress);
+    } catch {
+      // Fall through to FFmpeg for files the browser cannot decode or record.
+    }
+  }
+
   const ffmpeg = await getFFmpegRuntime();
   const inputName = `input-${crypto.randomUUID()}-${file.name.replace(/[^\w.-]/g, "_")}`;
   const outputBaseName = getOutputName(file.name, mode);
@@ -107,6 +116,14 @@ export async function transcodeFile(
     setActiveProgressHandler(undefined);
     await safeDelete(inputName);
   }
+}
+
+function canTryCanvasRecorder(file: File): boolean {
+  return (
+    file.type === "image/gif" ||
+    file.type.startsWith("video/") ||
+    /\.(gif|mp4|webm|mov|m4v)$/i.test(file.name)
+  );
 }
 
 async function finishResult(
