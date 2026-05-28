@@ -17,6 +17,7 @@
   --blue-deep: #0c47c7;
   --success-bg: #e9f8ef;
   --success-text: #17643a;
+  --warning-text: #8a5a00;
   --error-bg: #fff0f0;
   --error-text: #b43d3d;
 }
@@ -510,9 +511,16 @@ tbody tr:last-child td {
 }
 
 .output-cell em {
-  color: var(--error-text);
   font-size: 12px;
   font-style: normal;
+}
+
+.output-cell em.warning-text {
+  color: var(--warning-text);
+}
+
+.output-cell em.error-text {
+  color: var(--error-text);
 }
 
 .mode-chip {

@@ -9,6 +9,7 @@ import {
 } from "./presets";
 import {
   getFFmpegRuntime,
+  getRecentFFmpegLogs,
   setActiveProgressHandler
 } from "./ffmpegRuntime";
 import { inspectVideoBlob } from "./videoInspection";
@@ -30,10 +31,12 @@ export async function transcodeFile(
   mode: ConversionMode,
   options: TranscodeOptions = {}
 ): Promise<TranscodeResult> {
+  let canvasError: unknown;
   if (canTryCanvasRecorder(file)) {
     try {
       return await transcodeWithCanvasRecorder(file, mode, options.onProgress);
-    } catch {
+    } catch (error) {
+      canvasError = error;
       // Fall through to FFmpeg for files the browser cannot decode or record.
     }
   }
@@ -107,7 +110,9 @@ export async function transcodeFile(
     }
 
     if (!bestResult) {
-      throw new Error("所有编码尝试均失败");
+      const canvasMessage = canvasError instanceof Error ? `浏览器录制路径失败：${canvasError.message}；` : "";
+      const ffmpegLogs = getRecentFFmpegLogs();
+      throw new Error(`${canvasMessage}所有 FFmpeg 编码尝试均失败${ffmpegLogs ? `：${ffmpegLogs}` : ""}`);
     }
 
     warnings.push("未能压缩到 256 KB 以下，保留体积最小的结果");

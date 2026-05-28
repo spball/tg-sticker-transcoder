@@ -4,6 +4,7 @@ let ffmpeg: FFmpeg | undefined;
 let loadPromise: Promise<FFmpeg> | undefined;
 let activeProgress: ((progress: number) => void) | undefined;
 let wasmBlobUrl: string | undefined;
+let recentLogs: string[] = [];
 
 interface WasmManifest {
   totalSize: number;
@@ -45,6 +46,9 @@ export function terminateFFmpegRuntime(): void {
 
 async function loadRuntime(): Promise<FFmpeg> {
   const instance = new FFmpeg();
+  instance.on("log", ({ message }) => {
+    recentLogs = [...recentLogs.slice(-19), message];
+  });
   instance.on("progress", ({ progress }) => {
     if (Number.isFinite(progress)) {
       activeProgress?.(Math.max(0, Math.min(0.98, progress)));
@@ -60,6 +64,10 @@ async function loadRuntime(): Promise<FFmpeg> {
 
   ffmpeg = instance;
   return instance;
+}
+
+export function getRecentFFmpegLogs(): string {
+  return recentLogs.slice(-8).join(" | ");
 }
 
 async function getChunkedWasmUrl(coreBaseUrl: URL): Promise<string> {

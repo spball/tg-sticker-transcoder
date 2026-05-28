@@ -80,7 +80,7 @@ function App() {
         const outputUrl = URL.createObjectURL(result.blob);
         return {
           ...job,
-          status: result.warnings.length > 0 ? "failed" : "done",
+          status: "done",
           progress: 1,
           outputBlob: result.blob,
           outputUrl,
@@ -88,7 +88,7 @@ function App() {
           attempts: result.attempts,
           inspection: result.inspection,
           warning: result.warnings.join("；") || undefined,
-          error: result.warnings.length > 0 ? "输出未完全达标" : undefined
+          error: undefined
         };
       })
     );
@@ -481,8 +481,8 @@ function JobRow({ job, onRemove }: { job: BatchJob; onRemove: (jobId: string) =>
         <div className="output-cell">
           <strong>{job.outputBlob ? formatBytes(job.outputBlob.size) : "-"}</strong>
           <span title={attemptSummary}>{attemptSummary}</span>
-          {job.warning ? <em title={job.warning}>{job.warning}</em> : null}
-          {job.error ? <em title={job.error}>{job.error}</em> : null}
+          {job.warning ? <em className="warning-text" title={job.warning}>{job.warning}</em> : null}
+          {job.error ? <em className="error-text" title={job.error}>{job.error}</em> : null}
           {job.inspection ? (
             <small>
               {job.inspection.width} x {job.inspection.height} · {job.inspection.durationSeconds.toFixed(2)}s

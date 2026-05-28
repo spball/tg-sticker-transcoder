@@ -32,7 +32,12 @@ export async function transcodeWithCanvasRecorder(
 
   for (const step of getCompressionLadder(mode)) {
     const recordedBlob = await recordAttempt(file, mode, sourceInfo, step.fps, step.bitrateKbps, onProgress);
-    const blob = await finalizeWebmContainer(recordedBlob);
+    onProgress?.(0.96);
+    const blob = await finalizeWebmContainer(recordedBlob, {
+      bitrateKbps: step.bitrateKbps,
+      fps: step.fps
+    });
+    onProgress?.(0.99);
     if (!smallestBlob || blob.size < smallestBlob.size) {
       smallestBlob = blob;
     }
