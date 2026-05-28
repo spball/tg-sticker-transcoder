@@ -35,7 +35,8 @@ describe("preset helpers", () => {
 
   it("sanitizes output names", () => {
     expect(sanitizeFileName("My Sticker 01!!.mp4")).toBe("My-Sticker-01");
-    expect(getOutputName("猫猫.gif", "emoji")).toBe("telegram-sticker-emoji.webm");
+    expect(sanitizeFileName("猫猫 动图!!.gif")).toBe("猫猫-动图");
+    expect(getOutputName("猫猫.gif", "emoji")).toBe("猫猫-emoji.webm");
   });
 
   it("builds mode-specific filters", () => {

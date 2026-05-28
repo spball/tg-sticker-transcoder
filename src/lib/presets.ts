@@ -81,8 +81,8 @@ export function computeStickerDimensions(width: number, height: number): Sticker
 export function sanitizeFileName(fileName: string): string {
   const withoutExtension = fileName.replace(/\.[^/.]+$/, "");
   const safe = withoutExtension
-    .normalize("NFKD")
-    .replace(/[^\w.-]+/g, "-")
+    .normalize("NFKC")
+    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
     .replace(/-+/g, "-")
     .replace(/^[-.]+|[-.]+$/g, "")
     .slice(0, 80);
