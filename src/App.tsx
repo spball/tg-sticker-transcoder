@@ -262,14 +262,7 @@ function App() {
     <main>
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">T</span>
-          <span>Telegram WebM Lab</span>
-        </div>
-        <div className="topbar-actions">
-          <span className="status-pill">本地处理</span>
-          <a className="nav-link" href="#queue">
-            队列
-          </a>
+          <span>Telegram Sticker Transcoder</span>
         </div>
       </header>
 

@@ -68,35 +68,10 @@ main {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
   font-size: 14px;
   font-weight: 700;
 }
 
-.brand-mark {
-  display: inline-grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  color: var(--canvas);
-  background: var(--ink);
-  border-radius: 999px;
-}
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.nav-link {
-  color: var(--charcoal);
-  font-size: 14px;
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.status-pill,
 .mode-chip,
 .job-status {
   display: inline-flex;
@@ -108,12 +83,6 @@ main {
   font-weight: 700;
   line-height: 1.5;
   white-space: nowrap;
-}
-
-.status-pill {
-  padding: 4px 10px;
-  color: var(--success-text);
-  background: var(--success-bg);
 }
 
 .hero-section {
@@ -615,10 +584,6 @@ tbody tr:last-child td {
   .topbar {
     min-height: 58px;
     padding: 0 18px;
-  }
-
-  .nav-link {
-    display: none;
   }
 
   .hero-section,
