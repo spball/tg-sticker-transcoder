@@ -35,7 +35,7 @@ export async function transcodeWithCanvasRecorder(
   const attempts: EncodingAttempt[] = [];
   let smallestBlob: Blob | undefined;
 
-  for (const step of getCompressionLadder(mode)) {
+  for (const step of getCompressionLadder(mode, sourceInfo.durationMs)) {
     const recordedBlob = await recordAttempt(file, mode, sourceInfo, step.fps, step.bitrateKbps, onProgress);
     onProgress?.(0.96);
     const blob = await finalizeWebmContainer(recordedBlob, {

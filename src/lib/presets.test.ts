@@ -19,6 +19,14 @@ describe("preset helpers", () => {
     expect(ladder.some((step) => step.fps === 12)).toBe(true);
   });
 
+  it("raises bitrate for short sources to use more of the 256 KB budget", () => {
+    const longSticker = getCompressionLadder("sticker", 3000);
+    const shortSticker = getCompressionLadder("sticker", 650);
+
+    expect(shortSticker[0].bitrateKbps).toBeGreaterThan(longSticker[0].bitrateKbps * 3);
+    expect(shortSticker[0].bitrateKbps).toBeLessThanOrEqual(5200);
+  });
+
   it("calculates sticker dimensions with one exact 512px side", () => {
     expect(computeStickerDimensions(1920, 1080)).toEqual({ width: 512, height: 288 });
     expect(computeStickerDimensions(720, 1280)).toEqual({ width: 288, height: 512 });

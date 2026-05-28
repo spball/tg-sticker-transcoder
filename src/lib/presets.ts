@@ -37,28 +37,27 @@ export interface StickerDimensions {
   height: number;
 }
 
-export function getCompressionLadder(mode: ConversionMode): CompressionStep[] {
-  if (mode === "emoji") {
-    return [
-      { bitrateKbps: 180, fps: 30 },
-      { bitrateKbps: 140, fps: 30 },
-      { bitrateKbps: 110, fps: 24 },
-      { bitrateKbps: 80, fps: 20 },
-      { bitrateKbps: 60, fps: 15 },
-      { bitrateKbps: 45, fps: 12 }
-    ];
-  }
+export function getCompressionLadder(
+  mode: ConversionMode,
+  durationMs = TELEGRAM_MAX_DURATION_SECONDS * 1000
+): CompressionStep[] {
+  const durationSeconds = Math.max(0.12, Math.min(TELEGRAM_MAX_DURATION_SECONDS, durationMs / 1000));
+  const targetKbps = (TELEGRAM_MAX_BYTES * 8 * 0.94) / durationSeconds / 1000;
+  const minBitrate = mode === "emoji" ? 45 : 120;
+  const maxBitrate = mode === "emoji" ? 1800 : 5200;
+  const baseBitrate = clampBitrate(targetKbps, minBitrate, maxBitrate);
 
-  return [
-    { bitrateKbps: 620, fps: 30 },
-    { bitrateKbps: 520, fps: 30 },
-    { bitrateKbps: 420, fps: 30 },
-    { bitrateKbps: 340, fps: 24 },
-    { bitrateKbps: 280, fps: 20 },
-    { bitrateKbps: 220, fps: 15 },
-    { bitrateKbps: 160, fps: 12 },
-    { bitrateKbps: 120, fps: 12 }
-  ];
+  return uniqueCompressionSteps([
+    { bitrateKbps: clampBitrate(baseBitrate * 1.44, minBitrate, maxBitrate), fps: 30 },
+    { bitrateKbps: clampBitrate(baseBitrate * 1.16, minBitrate, maxBitrate), fps: 30 },
+    { bitrateKbps: baseBitrate, fps: 30 },
+    { bitrateKbps: clampBitrate(baseBitrate * 0.84, minBitrate, maxBitrate), fps: 30 },
+    { bitrateKbps: clampBitrate(baseBitrate * 0.68, minBitrate, maxBitrate), fps: 24 },
+    { bitrateKbps: clampBitrate(baseBitrate * 0.52, minBitrate, maxBitrate), fps: 20 },
+    { bitrateKbps: clampBitrate(baseBitrate * 0.38, minBitrate, maxBitrate), fps: 15 },
+    { bitrateKbps: clampBitrate(baseBitrate * 0.26, minBitrate, maxBitrate), fps: 12 },
+    { bitrateKbps: minBitrate, fps: 12 }
+  ]);
 }
 
 export function computeStickerDimensions(width: number, height: number): StickerDimensions {
@@ -160,4 +159,21 @@ export function formatBytes(bytes: number): string {
 function clampEven(value: number): number {
   const rounded = Math.max(2, Math.min(512, value));
   return rounded % 2 === 0 ? rounded : rounded - 1;
+}
+
+function clampBitrate(value: number, minBitrate: number, maxBitrate: number): number {
+  const rounded = value >= 1000 ? Math.round(value / 50) * 50 : Math.round(value / 10) * 10;
+  return Math.max(minBitrate, Math.min(maxBitrate, rounded));
+}
+
+function uniqueCompressionSteps(steps: CompressionStep[]): CompressionStep[] {
+  const seen = new Set<string>();
+  return steps.filter((step) => {
+    const key = `${step.bitrateKbps}:${step.fps}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
