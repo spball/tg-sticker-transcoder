@@ -5,7 +5,9 @@ let loadPromise: Promise<FFmpeg> | undefined;
 let activeProgress: ((progress: number) => void) | undefined;
 let wasmBlobUrl: string | undefined;
 let recentLogs: string[] = [];
+let completedFFmpegJobs = 0;
 const FFMPEG_ASSET_VERSION = "esm-core-20260528";
+const FFMPEG_JOB_RECYCLE_INTERVAL = 25;
 
 interface WasmManifest {
   totalSize: number;
@@ -40,17 +42,19 @@ export function setActiveProgressHandler(handler: ((progress: number) => void) |
   activeProgress = handler;
 }
 
-export function terminateFFmpegRuntime(): void {
+export function terminateFFmpegRuntime(options: { keepWasmBlob?: boolean } = {}): void {
   if (ffmpeg?.loaded) {
     ffmpeg.terminate();
   }
-  if (wasmBlobUrl) {
+  if (wasmBlobUrl && !options.keepWasmBlob) {
     URL.revokeObjectURL(wasmBlobUrl);
+    wasmBlobUrl = undefined;
   }
   ffmpeg = undefined;
   loadPromise = undefined;
   activeProgress = undefined;
-  wasmBlobUrl = undefined;
+  recentLogs = [];
+  completedFFmpegJobs = 0;
 }
 
 async function loadRuntime(): Promise<FFmpeg> {
@@ -77,6 +81,25 @@ async function loadRuntime(): Promise<FFmpeg> {
 
 export function getRecentFFmpegLogs(): string {
   return recentLogs.slice(-8).join(" | ");
+}
+
+export function clearRecentFFmpegLogs(): void {
+  recentLogs = [];
+}
+
+export function recycleFFmpegRuntimeAfterJob(): void {
+  if (!ffmpeg?.loaded) {
+    return;
+  }
+
+  completedFFmpegJobs += 1;
+  if (completedFFmpegJobs >= FFMPEG_JOB_RECYCLE_INTERVAL) {
+    terminateFFmpegRuntime({ keepWasmBlob: true });
+  }
+}
+
+export function restartFFmpegRuntime(): void {
+  terminateFFmpegRuntime({ keepWasmBlob: true });
 }
 
 async function getChunkedWasmUrl(coreBaseUrl: URL): Promise<string> {

@@ -1,4 +1,10 @@
-import { getFFmpegRuntime, getRecentFFmpegLogs } from "./ffmpegRuntime";
+import type { FFmpeg } from "@ffmpeg/ffmpeg";
+import {
+  clearRecentFFmpegLogs,
+  getFFmpegRuntime,
+  getRecentFFmpegLogs,
+  restartFFmpegRuntime
+} from "./ffmpegRuntime";
 
 interface FinalizeOptions {
   bitrateKbps: number;
@@ -6,6 +12,22 @@ interface FinalizeOptions {
 }
 
 export async function finalizeWebmContainer(blob: Blob, options: FinalizeOptions): Promise<Blob> {
+  try {
+    return await finalizeWebmContainerOnce(blob, options);
+  } catch (error) {
+    const firstError = error instanceof Error ? error.message : "未知错误";
+    restartFFmpegRuntime();
+
+    try {
+      return await finalizeWebmContainerOnce(blob, options);
+    } catch (retryError) {
+      const retryMessage = retryError instanceof Error ? retryError.message : "未知错误";
+      throw new Error(`${retryMessage}；已重启 FFmpeg 后重试一次，首次错误：${firstError}`);
+    }
+  }
+}
+
+async function finalizeWebmContainerOnce(blob: Blob, options: FinalizeOptions): Promise<Blob> {
   const ffmpeg = await getFFmpegRuntime();
   const inputName = `mediarecorder-${crypto.randomUUID()}.webm`;
   const remuxOutputName = `final-${crypto.randomUUID()}.webm`;
@@ -14,67 +36,82 @@ export async function finalizeWebmContainer(blob: Blob, options: FinalizeOptions
   await ffmpeg.writeFile(inputName, new Uint8Array(await blob.arrayBuffer()));
 
   try {
-    const remuxResult = await ffmpeg.exec([
-      "-hide_banner",
-      "-y",
-      "-i",
-      inputName,
-      "-map",
-      "0:v:0",
-      "-an",
-      "-c:v",
-      "copy",
-      "-f",
-      "webm",
-      remuxOutputName
-    ]);
+    clearRecentFFmpegLogs();
+    let remuxResult = -1;
+    let remuxFailure = "";
+    try {
+      remuxResult = await ffmpeg.exec([
+        "-hide_banner",
+        "-y",
+        "-i",
+        inputName,
+        "-map",
+        "0:v:0",
+        "-an",
+        "-c:v",
+        "copy",
+        "-f",
+        "webm",
+        remuxOutputName
+      ]);
+      remuxFailure = getRecentFFmpegLogs();
+    } catch (error) {
+      remuxFailure = error instanceof Error ? error.message : String(error);
+    }
 
     if (remuxResult === 0) {
       const data = await ffmpeg.readFile(remuxOutputName);
       return new Blob([toBlobPart(data)], { type: "video/webm" });
     }
 
-    const reencodeResult = await ffmpeg.exec([
-      "-hide_banner",
-      "-y",
-      "-i",
-      inputName,
-      "-map",
-      "0:v:0",
-      "-an",
-      "-vf",
-      `fps=${options.fps}`,
-      "-c:v",
-      "libvpx-vp9",
-      "-b:v",
-      `${options.bitrateKbps}k`,
-      "-deadline",
-      "good",
-      "-cpu-used",
-      "4",
-      "-pix_fmt",
-      "yuv420p",
-      "-f",
-      "webm",
-      reencodeOutputName
-    ]);
+    clearRecentFFmpegLogs();
+    let reencodeResult = -1;
+    let reencodeFailure = "";
+    try {
+      reencodeResult = await ffmpeg.exec([
+        "-hide_banner",
+        "-y",
+        "-i",
+        inputName,
+        "-map",
+        "0:v:0",
+        "-an",
+        "-vf",
+        `fps=${options.fps}`,
+        "-c:v",
+        "libvpx-vp9",
+        "-b:v",
+        `${options.bitrateKbps}k`,
+        "-deadline",
+        "good",
+        "-cpu-used",
+        "4",
+        "-pix_fmt",
+        "yuv420p",
+        "-f",
+        "webm",
+        reencodeOutputName
+      ]);
+      reencodeFailure = getRecentFFmpegLogs();
+    } catch (error) {
+      reencodeFailure = error instanceof Error ? error.message : String(error);
+    }
 
     if (reencodeResult !== 0) {
-      throw new Error(`WebM 容器整理失败：${getRecentFFmpegLogs() || "FFmpeg 未返回详细日志"}`);
+      throw new Error(`WebM 容器整理失败：${reencodeFailure || remuxFailure || "FFmpeg 未返回详细日志"}`);
     }
 
     const data = await ffmpeg.readFile(reencodeOutputName);
     return new Blob([toBlobPart(data)], { type: "video/webm" });
   } finally {
-    await safeDelete(inputName);
-    await safeDelete(remuxOutputName);
-    await safeDelete(reencodeOutputName);
+    await safeDelete(ffmpeg, inputName);
+    await safeDelete(ffmpeg, remuxOutputName);
+    await safeDelete(ffmpeg, reencodeOutputName);
   }
 }
 
-async function safeDelete(fileName: string): Promise<void> {
+async function safeDelete(ffmpeg: FFmpeg, fileName: string): Promise<void> {
   try {
-    const ffmpeg = await getFFmpegRuntime();
     await ffmpeg.deleteFile(fileName);
   } catch {
     // Ignore virtual filesystem cleanup failures.
