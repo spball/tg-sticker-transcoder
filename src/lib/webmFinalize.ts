@@ -5,29 +5,33 @@ import {
   getRecentFFmpegLogs,
   restartFFmpegRuntime
 } from "./ffmpegRuntime";
+import { getTranslations, type Locale } from "./i18n";
 
 interface FinalizeOptions {
   bitrateKbps: number;
   fps: number;
+  locale?: Locale;
 }
 
 export async function finalizeWebmContainer(blob: Blob, options: FinalizeOptions): Promise<Blob> {
+  const text = getTranslations(options.locale ?? "en");
   try {
     return await finalizeWebmContainerOnce(blob, options);
   } catch (error) {
-    const firstError = error instanceof Error ? error.message : "未知错误";
+    const firstError = error instanceof Error ? error.message : text.errors.unknown;
     restartFFmpegRuntime();
 
     try {
       return await finalizeWebmContainerOnce(blob, options);
     } catch (retryError) {
-      const retryMessage = retryError instanceof Error ? retryError.message : "未知错误";
-      throw new Error(`${retryMessage}；已重启 FFmpeg 后重试一次，首次错误：${firstError}`);
+      const retryMessage = retryError instanceof Error ? retryError.message : text.errors.unknown;
+      throw new Error(text.errors.webmRetryFailed(retryMessage, firstError));
     }
   }
 }
 
 async function finalizeWebmContainerOnce(blob: Blob, options: FinalizeOptions): Promise<Blob> {
+  const text = getTranslations(options.locale ?? "en");
   const ffmpeg = await getFFmpegRuntime();
   const inputName = `mediarecorder-${crypto.randomUUID()}.webm`;
   const remuxOutputName = `final-${crypto.randomUUID()}.webm`;
@@ -98,7 +102,9 @@ async function finalizeWebmContainerOnce(blob: Blob, options: FinalizeOptions): 
     }
 
     if (reencodeResult !== 0) {
-      throw new Error(`WebM 容器整理失败：${reencodeFailure || remuxFailure || "FFmpeg 未返回详细日志"}`);
+      throw new Error(
+        text.errors.webmFinalizeFailed(reencodeFailure || remuxFailure || text.errors.ffmpegNoDetailedLogs)
+      );
     }
 
     const data = await ffmpeg.readFile(reencodeOutputName);

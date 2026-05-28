@@ -22,6 +22,12 @@ import {
   summarizeAttempts,
   TELEGRAM_MAX_BYTES
 } from "./lib/presets";
+import {
+  detectLocale,
+  getModeDescription,
+  getTranslations,
+  type Translations
+} from "./lib/i18n";
 import { terminateFFmpegRuntime } from "./lib/ffmpegRuntime";
 import { transcodeFile } from "./lib/transcode";
 
@@ -35,6 +41,8 @@ const ACCEPTED_TYPES = [
 ];
 
 function App() {
+  const locale = useMemo(() => detectLocale(), []);
+  const text = useMemo(() => getTranslations(locale), [locale]);
   const [mode, setMode] = useState<ConversionMode>("sticker");
   const [jobs, setJobs] = useState<BatchJob[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -47,6 +55,10 @@ function App() {
   useEffect(() => {
     jobsRef.current = jobs;
   }, [jobs]);
+
+  useEffect(() => {
+    document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
+  }, [locale]);
 
   useEffect(() => {
     return () => {
@@ -87,12 +99,12 @@ function App() {
           outputName: result.outputName,
           attempts: result.attempts,
           inspection: result.inspection,
-          warning: result.warnings.join("；") || undefined,
+          warning: result.warnings.join(text.output.separator) || undefined,
           error: undefined
         };
       })
     );
-  }, []);
+  }, [text.output.separator]);
 
   const markFailed = useCallback((jobId: string, error: unknown) => {
     setJobs((current) =>
@@ -102,12 +114,12 @@ function App() {
               ...job,
               status: "failed",
               progress: 0,
-              error: error instanceof Error ? error.message : "转码失败"
+              error: error instanceof Error ? error.message : text.errors.transcodeFailed
             }
           : job
       )
     );
-  }, []);
+  }, [text.errors.transcodeFailed]);
 
   const markCancelled = useCallback((jobId: string) => {
     setJobs((current) =>
@@ -117,12 +129,12 @@ function App() {
               ...job,
               status: "cancelled",
               progress: 0,
-              error: "已取消"
+              error: text.status.cancelled
             }
           : job
       )
     );
-  }, []);
+  }, [text.status.cancelled]);
 
   const changeMode = (nextMode: ConversionMode) => {
     setMode(nextMode);
@@ -177,6 +189,7 @@ function App() {
 
       try {
         const result = await transcodeFile(nextJob.file, nextJob.mode, {
+          locale,
           onProgress: (progress) => {
             setJobs((current) =>
               current.map((job) =>
@@ -202,7 +215,7 @@ function App() {
     }
 
     setIsProcessing(false);
-  }, [isProcessing, markCancelled, markDone, markFailed]);
+  }, [isProcessing, locale, markCancelled, markDone, markFailed]);
 
   const pauseQueue = () => {
     pausedRef.current = true;
@@ -217,7 +230,7 @@ function App() {
     setJobs((current) =>
       current.map((job) =>
         job.status === "queued" || job.status === "processing"
-          ? { ...job, status: "cancelled", progress: 0, error: "已取消" }
+          ? { ...job, status: "cancelled", progress: 0, error: text.status.cancelled }
           : job
       )
     );
@@ -262,32 +275,32 @@ function App() {
     <main>
       <header className="topbar">
         <div className="brand">
-          <span>Telegram Sticker Transcoder</span>
+          <span>{text.app.brand}</span>
         </div>
       </header>
 
       <section className="hero-section">
         <div className="hero-copy">
-          <span className="eyebrow">VP9 · WEBM · 256 KB</span>
-          <h1>Telegram 贴纸转码工具</h1>
-          <p>批量把 GIF、MP4、MOV、WEBM 转成 Telegram 贴纸或视频 emoji 可上传的 WebM 文件。</p>
+          <span className="eyebrow">{text.app.eyebrow}</span>
+          <h1>{text.app.heroTitle}</h1>
+          <p>{text.app.heroBody}</p>
         </div>
-        <div className="hero-stats" aria-label="Telegram constraints">
+        <div className="hero-stats" aria-label={text.app.constraintsLabel}>
           <div>
             <strong>512px</strong>
-            <span>Sticker 长边</span>
+            <span>{text.stats.stickerSide}</span>
           </div>
           <div>
             <strong>100px</strong>
-            <span>Emoji 画布</span>
+            <span>{text.stats.emojiCanvas}</span>
           </div>
           <div>
             <strong>3s</strong>
-            <span>最长时长</span>
+            <span>{text.stats.duration}</span>
           </div>
           <div>
             <strong>256KB</strong>
-            <span>文件上限</span>
+            <span>{text.stats.size}</span>
           </div>
         </div>
       </section>
@@ -295,8 +308,8 @@ function App() {
       <section className="workspace-grid">
         <div className="mode-panel">
           <div className="section-heading">
-            <span>输出模式</span>
-            <small>{PRESETS[mode].targetDescription}</small>
+            <span>{text.modes.heading}</span>
+            <small>{getModeDescription(mode, locale)}</small>
           </div>
           <div className="mode-grid">
             <ModeCard
@@ -304,7 +317,7 @@ function App() {
               color="coral"
               icon={<Film size={20} />}
               title="Sticker"
-              subtitle="一边 512px"
+              subtitle={text.modes.stickerSubtitle}
               onClick={() => changeMode("sticker")}
             />
             <ModeCard
@@ -312,15 +325,15 @@ function App() {
               color="blue"
               icon={<Smile size={20} />}
               title="Emoji"
-              subtitle="100 x 100px"
+              subtitle={text.modes.emojiSubtitle}
               onClick={() => changeMode("emoji")}
             />
           </div>
 
           <div className="rules-list">
-            <Rule icon={<Sparkles size={18} />} label="VP9 WebM" value="自动移除音频" />
-            <Rule icon={<CheckCircle2 size={18} />} label="最高 30 FPS" value="超限自动降档" />
-            <Rule icon={<Archive size={18} />} label="目标体积" value={`≤ ${formatBytes(TELEGRAM_MAX_BYTES)}`} />
+            <Rule icon={<Sparkles size={18} />} label={text.rules.vp9Label} value={text.rules.vp9Value} />
+            <Rule icon={<CheckCircle2 size={18} />} label={text.rules.fpsLabel} value={text.rules.fpsValue} />
+            <Rule icon={<Archive size={18} />} label={text.rules.sizeLabel} value={`≤ ${formatBytes(TELEGRAM_MAX_BYTES)}`} />
           </div>
         </div>
 
@@ -345,37 +358,37 @@ function App() {
             }}
           />
           <UploadCloud size={34} />
-          <strong>拖入文件或点击选择</strong>
-          <span>当前新文件模式：{PRESETS[mode].label}</span>
+          <strong>{text.upload.title}</strong>
+          <span>{text.upload.currentMode(PRESETS[mode].label)}</span>
         </label>
       </section>
 
       <section id="queue" className="queue-section">
         <div className="queue-header">
           <div>
-            <span className="eyebrow">Batch Queue</span>
-            <h2>转码队列</h2>
+            <span className="eyebrow">{text.queue.eyebrow}</span>
+            <h2>{text.queue.title}</h2>
           </div>
           <div className="queue-actions">
             <button className="button-primary" onClick={runQueue} disabled={isProcessing || queuedJobs.length === 0}>
               <Play size={16} />
-              开始
+              {text.actions.start}
             </button>
             <button className="button-secondary" onClick={pauseQueue} disabled={!isProcessing || isPaused}>
               <Pause size={16} />
-              暂停
+              {text.actions.pause}
             </button>
             <button className="button-secondary" onClick={cancelQueue} disabled={!isProcessing && queuedJobs.length === 0}>
               <XCircle size={16} />
-              取消
+              {text.actions.cancel}
             </button>
             <button className="button-secondary" onClick={() => downloadZip(downloadableJobs)} disabled={downloadableJobs.length === 0}>
               <Archive size={16} />
-              ZIP
+              {text.actions.zip}
             </button>
             <button className="button-icon" onClick={clearFinished} disabled={jobs.length === queuedJobs.length}>
               <Trash2 size={17} />
-              <span className="sr-only">清理完成项</span>
+              <span className="sr-only">{text.actions.clearFinished}</span>
             </button>
           </div>
         </div>
@@ -383,24 +396,24 @@ function App() {
         {jobs.length === 0 ? (
           <div className="empty-state">
             <CircleAlert size={20} />
-            <span>队列为空</span>
+            <span>{text.queue.empty}</span>
           </div>
         ) : (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>文件</th>
-                  <th>模式</th>
-                  <th>状态</th>
-                  <th>输出</th>
-                  <th>预览</th>
-                  <th>操作</th>
+                  <th>{text.table.file}</th>
+                  <th>{text.table.mode}</th>
+                  <th>{text.table.status}</th>
+                  <th>{text.table.output}</th>
+                  <th>{text.table.preview}</th>
+                  <th>{text.table.actions}</th>
                 </tr>
               </thead>
               <tbody>
                 {jobs.map((job) => (
-                  <JobRow key={job.id} job={job} onRemove={removeJob} />
+                  <JobRow key={job.id} job={job} onRemove={removeJob} text={text} />
                 ))}
               </tbody>
             </table>
@@ -445,9 +458,17 @@ function Rule({ icon, label, value }: { icon: React.ReactNode; label: string; va
   );
 }
 
-function JobRow({ job, onRemove }: { job: BatchJob; onRemove: (jobId: string) => void }) {
-  const attemptSummary = job.attempts.length > 0 ? summarizeAttempts(job.attempts) : "等待处理";
-  const status = getStatusContent(job);
+function JobRow({
+  job,
+  onRemove,
+  text
+}: {
+  job: BatchJob;
+  onRemove: (jobId: string) => void;
+  text: Translations;
+}) {
+  const attemptSummary = job.attempts.length > 0 ? summarizeAttempts(job.attempts) : text.output.pending;
+  const status = getStatusContent(job, text);
 
   return (
     <tr>
@@ -496,7 +517,7 @@ function JobRow({ job, onRemove }: { job: BatchJob; onRemove: (jobId: string) =>
             className="button-icon"
             disabled={!job.outputBlob || !job.outputName}
             onClick={() => job.outputBlob && job.outputName && downloadBlob(job.outputBlob, job.outputName)}
-            title="下载"
+            title={text.actions.download}
           >
             <Download size={16} />
           </button>
@@ -504,7 +525,7 @@ function JobRow({ job, onRemove }: { job: BatchJob; onRemove: (jobId: string) =>
             className="button-icon"
             disabled={job.status === "processing"}
             onClick={() => onRemove(job.id)}
-            title="移除"
+            title={text.actions.remove}
           >
             <Trash2 size={16} />
           </button>
@@ -514,12 +535,12 @@ function JobRow({ job, onRemove }: { job: BatchJob; onRemove: (jobId: string) =>
   );
 }
 
-function getStatusContent(job: BatchJob) {
+function getStatusContent(job: BatchJob, text: Translations) {
   if (job.status === "done") {
     return (
       <>
         <CheckCircle2 size={14} />
-        完成
+        {text.status.done}
       </>
     );
   }
@@ -527,7 +548,7 @@ function getStatusContent(job: BatchJob) {
     return (
       <>
         <CircleAlert size={14} />
-        失败
+        {text.status.failed}
       </>
     );
   }
@@ -535,7 +556,7 @@ function getStatusContent(job: BatchJob) {
     return (
       <>
         <XCircle size={14} />
-        已取消
+        {text.status.cancelled}
       </>
     );
   }
@@ -543,11 +564,11 @@ function getStatusContent(job: BatchJob) {
     return (
       <>
         <LoaderCircle className="spin" size={14} />
-        {Math.round(job.progress * 100)}%
+        {text.status.processing(Math.round(job.progress * 100))}
       </>
     );
   }
-  return "等待";
+  return text.status.queued;
 }
 
 export default App;

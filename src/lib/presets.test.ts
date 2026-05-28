@@ -51,7 +51,7 @@ describe("preset helpers", () => {
     ).toEqual([]);
 
     expect(
-      validateInspection("sticker", { width: 511, height: 512, durationSeconds: 3.3 }, TELEGRAM_MAX_BYTES + 1)
+      validateInspection("sticker", { width: 511, height: 512, durationSeconds: 3.3 }, TELEGRAM_MAX_BYTES + 1, "zh")
     ).toEqual(expect.arrayContaining(["时长超过 3 秒"]));
   });
 

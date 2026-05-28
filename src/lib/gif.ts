@@ -1,3 +1,5 @@
+import { detectLocale, getTranslations } from "./i18n";
+
 export interface GifInfo {
   width: number;
   height: number;
@@ -13,7 +15,7 @@ export async function readGifInfo(file: File): Promise<GifInfo> {
 export function parseGifInfo(data: Uint8Array): GifInfo {
   const signature = decodeAscii(data.slice(0, 6));
   if (signature !== "GIF87a" && signature !== "GIF89a") {
-    throw new Error("不是有效 GIF 文件");
+    throw new Error(getTranslations(detectLocale()).errors.invalidGif);
   }
 
   const width = readUint16(data, 6);
@@ -65,7 +67,7 @@ export function parseGifInfo(data: Uint8Array): GifInfo {
       continue;
     }
 
-    throw new Error("GIF 数据结构异常");
+    throw new Error(getTranslations(detectLocale()).errors.malformedGif);
   }
 
   return {

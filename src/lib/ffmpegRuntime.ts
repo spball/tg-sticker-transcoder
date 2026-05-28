@@ -1,4 +1,5 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { detectLocale, getTranslations } from "./i18n";
 
 let ffmpeg: FFmpeg | undefined;
 let loadPromise: Promise<FFmpeg> | undefined;
@@ -109,7 +110,7 @@ async function getChunkedWasmUrl(coreBaseUrl: URL): Promise<string> {
 
   const manifestResponse = await fetch(versionedAssetUrl("ffmpeg-core.wasm.json", coreBaseUrl));
   if (!manifestResponse.ok) {
-    throw new Error("无法加载 FFmpeg WASM 分片清单");
+    throw new Error(getRuntimeText().errors.ffmpegManifestLoadFailed);
   }
 
   const manifest = (await manifestResponse.json()) as WasmManifest;
@@ -117,12 +118,12 @@ async function getChunkedWasmUrl(coreBaseUrl: URL): Promise<string> {
     manifest.parts.map(async (part) => {
       const response = await fetch(versionedAssetUrl(part.file, coreBaseUrl));
       if (!response.ok) {
-        throw new Error(`无法加载 FFmpeg WASM 分片：${part.file}`);
+        throw new Error(getRuntimeText().errors.ffmpegChunkLoadFailed(part.file));
       }
 
       const buffer = await response.arrayBuffer();
       if (buffer.byteLength !== part.size) {
-        throw new Error(`FFmpeg WASM 分片大小异常：${part.file}`);
+        throw new Error(getRuntimeText().errors.ffmpegChunkSizeMismatch(part.file));
       }
       return new Uint8Array(buffer);
     })
@@ -130,7 +131,7 @@ async function getChunkedWasmUrl(coreBaseUrl: URL): Promise<string> {
 
   const totalSize = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
   if (totalSize !== manifest.totalSize) {
-    throw new Error("FFmpeg WASM 分片合并大小异常");
+    throw new Error(getRuntimeText().errors.ffmpegWasmMergeMismatch);
   }
 
   const wasm = new Uint8Array(totalSize);
@@ -142,6 +143,10 @@ async function getChunkedWasmUrl(coreBaseUrl: URL): Promise<string> {
 
   wasmBlobUrl = URL.createObjectURL(new Blob([wasm.buffer], { type: "application/wasm" }));
   return wasmBlobUrl;
+}
+
+function getRuntimeText() {
+  return getTranslations(detectLocale());
 }
 
 function versionedAssetUrl(path: string, baseUrl: URL): URL {

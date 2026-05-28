@@ -4,6 +4,7 @@ import type {
   TranscodePreset,
   VideoInspection
 } from "../types";
+import { getTranslations, type Locale } from "./i18n";
 
 export const TELEGRAM_MAX_BYTES = 256 * 1024;
 export const TELEGRAM_MAX_DURATION_SECONDS = 3;
@@ -15,7 +16,7 @@ export const PRESETS: Record<ConversionMode, TranscodePreset> = {
     maxDurationSeconds: TELEGRAM_MAX_DURATION_SECONDS,
     maxSizeBytes: TELEGRAM_MAX_BYTES,
     maxFps: 30,
-    targetDescription: "一边 512px，另一边不超过 512px"
+    targetDescription: "One side is 512px, the other is 512px or less"
   },
   emoji: {
     mode: "emoji",
@@ -23,7 +24,7 @@ export const PRESETS: Record<ConversionMode, TranscodePreset> = {
     maxDurationSeconds: TELEGRAM_MAX_DURATION_SECONDS,
     maxSizeBytes: TELEGRAM_MAX_BYTES,
     maxFps: 30,
-    targetDescription: "精确 100 x 100px"
+    targetDescription: "Exactly 100 x 100px"
   }
 };
 
@@ -109,21 +110,23 @@ export function buildVideoFilter(mode: ConversionMode, transparentPadding: boole
 export function validateInspection(
   mode: ConversionMode,
   inspection: VideoInspection,
-  sizeBytes: number
+  sizeBytes: number,
+  locale: Locale = "en"
 ): string[] {
   const messages: string[] = [];
+  const text = getTranslations(locale);
 
   if (sizeBytes > TELEGRAM_MAX_BYTES) {
-    messages.push(`文件大小 ${formatBytes(sizeBytes)} 超过 256 KB`);
+    messages.push(text.validation.fileTooLarge(formatBytes(sizeBytes)));
   }
 
   if (inspection.durationSeconds > TELEGRAM_MAX_DURATION_SECONDS + 0.12) {
-    messages.push("时长超过 3 秒");
+    messages.push(text.validation.durationTooLong);
   }
 
   if (mode === "emoji") {
     if (inspection.width !== 100 || inspection.height !== 100) {
-      messages.push(`Emoji 尺寸为 ${inspection.width} x ${inspection.height}，需要 100 x 100`);
+      messages.push(text.validation.emojiDimensions(inspection.width, inspection.height));
     }
     return messages;
   }
@@ -131,7 +134,7 @@ export function validateInspection(
   const maxSide = Math.max(inspection.width, inspection.height);
   const minSide = Math.min(inspection.width, inspection.height);
   if (maxSide !== 512 || minSide > 512) {
-    messages.push(`Sticker 尺寸为 ${inspection.width} x ${inspection.height}，需要一边正好 512px`);
+    messages.push(text.validation.stickerDimensions(inspection.width, inspection.height));
   }
 
   return messages;

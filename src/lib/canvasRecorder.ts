@@ -8,6 +8,7 @@ import {
 } from "./presets";
 import { inspectVideoBlob } from "./videoInspection";
 import { readGifInfo } from "./gif";
+import { getTranslations, type Locale } from "./i18n";
 import {
   closeGifAnimation,
   decodeGifAnimation,
@@ -25,22 +26,25 @@ interface SourceInfo {
 export async function transcodeWithCanvasRecorder(
   file: File,
   mode: ConversionMode,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  locale: Locale = "en"
 ): Promise<TranscodeResult> {
+  const text = getTranslations(locale);
   if (!supportsVp9Recorder()) {
-    throw new Error("当前浏览器不支持 VP9 MediaRecorder");
+    throw new Error(text.errors.noVp9Recorder);
   }
 
-  const sourceInfo = await inspectSource(file);
+  const sourceInfo = await inspectSource(file, locale);
   const attempts: EncodingAttempt[] = [];
   let smallestBlob: Blob | undefined;
 
   for (const step of getCompressionLadder(mode, sourceInfo.durationMs)) {
-    const recordedBlob = await recordAttempt(file, mode, sourceInfo, step.fps, step.bitrateKbps, onProgress);
+    const recordedBlob = await recordAttempt(file, mode, sourceInfo, step.fps, step.bitrateKbps, onProgress, locale);
     onProgress?.(0.96);
     const blob = await finalizeWebmContainer(recordedBlob, {
       bitrateKbps: step.bitrateKbps,
-      fps: step.fps
+      fps: step.fps,
+      locale
     });
     onProgress?.(0.99);
     if (!smallestBlob || blob.size < smallestBlob.size) {
@@ -52,16 +56,16 @@ export async function transcodeWithCanvasRecorder(
       fps: step.fps,
       sizeBytes: blob.size,
       ok,
-      note: "浏览器 Canvas VP9"
+      note: text.attempts.canvasVp9
     });
 
     if (ok) {
-      return finishCanvasResult(file, mode, blob, attempts);
+      return finishCanvasResult(file, mode, blob, attempts, [], locale);
     }
   }
 
-  const finalBlob = smallestBlob ?? (await recordAttempt(file, mode, sourceInfo, 12, 45, onProgress));
-  return finishCanvasResult(file, mode, finalBlob, attempts, ["未能压缩到 256 KB 以下，保留最后一次结果"]);
+  const finalBlob = smallestBlob ?? (await recordAttempt(file, mode, sourceInfo, 12, 45, onProgress, locale));
+  return finishCanvasResult(file, mode, finalBlob, attempts, [text.warnings.keptLast], locale);
 }
 
 export function supportsVp9Recorder(): boolean {
@@ -73,12 +77,14 @@ async function finishCanvasResult(
   mode: ConversionMode,
   blob: Blob,
   attempts: EncodingAttempt[],
-  initialWarnings: string[] = []
+  initialWarnings: string[] = [],
+  locale: Locale = "en"
 ): Promise<TranscodeResult> {
   const warnings = [...initialWarnings];
+  const text = getTranslations(locale);
   try {
     const inspection = await inspectVideoBlob(blob);
-    warnings.push(...validateInspection(mode, inspection, blob.size));
+    warnings.push(...validateInspection(mode, inspection, blob.size, locale));
     return {
       blob,
       outputName: getOutputName(file.name, mode),
@@ -86,8 +92,8 @@ async function finishCanvasResult(
       inspection,
       warnings
     };
-  } catch (error) {
-    warnings.push(error instanceof Error ? error.message : "输出视频元数据读取失败");
+  } catch {
+    warnings.push(text.errors.outputMetadataReadFailed);
     return {
       blob,
       outputName: getOutputName(file.name, mode),
@@ -97,7 +103,8 @@ async function finishCanvasResult(
   }
 }
 
-async function inspectSource(file: File): Promise<SourceInfo> {
+async function inspectSource(file: File, locale: Locale): Promise<SourceInfo> {
+  const text = getTranslations(locale);
   if (isGif(file)) {
     const info = await readGifInfo(file);
     return {
@@ -126,7 +133,7 @@ async function inspectSource(file: File): Promise<SourceInfo> {
     };
     video.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("浏览器无法解码该输入文件"));
+      reject(new Error(text.errors.browserCannotDecode));
     };
     video.src = url;
   });
@@ -138,22 +145,24 @@ async function recordAttempt(
   sourceInfo: SourceInfo,
   fps: number,
   bitrateKbps: number,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  locale: Locale = "en"
 ): Promise<Blob> {
+  const text = getTranslations(locale);
   const canvas = document.createElement("canvas");
   const target = mode === "emoji" ? { width: 100, height: 100 } : computeStickerDimensions(sourceInfo.width, sourceInfo.height);
   canvas.width = target.width;
   canvas.height = target.height;
   const context = canvas.getContext("2d", { alpha: true });
   if (!context) {
-    throw new Error("无法创建 Canvas 渲染上下文");
+    throw new Error(text.errors.canvasContextFailed);
   }
 
   if (sourceInfo.kind === "gif") {
-    return recordGif(file, sourceInfo, canvas, context, fps, bitrateKbps, mode, onProgress);
+    return recordGif(file, sourceInfo, canvas, context, fps, bitrateKbps, mode, onProgress, locale);
   }
 
-  return recordVideo(file, sourceInfo, canvas, context, fps, bitrateKbps, mode, onProgress);
+  return recordVideo(file, sourceInfo, canvas, context, fps, bitrateKbps, mode, onProgress, locale);
 }
 
 function recordGif(
@@ -164,10 +173,11 @@ function recordGif(
   fps: number,
   bitrateKbps: number,
   mode: ConversionMode,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  locale: Locale = "en"
 ): Promise<Blob> {
-  return recordDecodedGif(file, sourceInfo, canvas, context, fps, bitrateKbps, mode, onProgress).catch(() =>
-    recordGifImageFallback(file, sourceInfo, canvas, context, fps, bitrateKbps, mode, onProgress)
+  return recordDecodedGif(file, sourceInfo, canvas, context, fps, bitrateKbps, mode, onProgress, locale).catch(() =>
+    recordGifImageFallback(file, sourceInfo, canvas, context, fps, bitrateKbps, mode, onProgress, locale)
   );
 }
 
@@ -179,11 +189,13 @@ async function recordDecodedGif(
   fps: number,
   bitrateKbps: number,
   mode: ConversionMode,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  locale: Locale = "en"
 ): Promise<Blob> {
+  const text = getTranslations(locale);
   const animation = await decodeGifAnimation(file);
   if (!animation) {
-    throw new Error("当前浏览器无法逐帧解码 GIF");
+    throw new Error(text.errors.gifFrameDecodeUnsupported);
   }
 
   const durationMs = Math.min(3000, Math.max(120, animation.durationMs || sourceInfo.durationMs));
@@ -192,7 +204,7 @@ async function recordDecodedGif(
       const frame = getGifFrameAt(animation, elapsedMs);
       drawSource(context, frame, sourceInfo.width, sourceInfo.height, canvas.width, canvas.height, mode);
       onProgress?.(Math.min(0.95, elapsedMs / durationMs));
-    });
+    }, locale);
   } finally {
     closeGifAnimation(animation);
   }
@@ -206,8 +218,10 @@ function recordGifImageFallback(
   fps: number,
   bitrateKbps: number,
   mode: ConversionMode,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  locale: Locale = "en"
 ): Promise<Blob> {
+  const text = getTranslations(locale);
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -215,13 +229,13 @@ function recordGifImageFallback(
       recordCanvas(canvas, fps, bitrateKbps, sourceInfo.durationMs, (elapsedMs) => {
         drawSource(context, image, sourceInfo.width, sourceInfo.height, canvas.width, canvas.height, mode);
         onProgress?.(Math.min(0.95, elapsedMs / sourceInfo.durationMs));
-      })
+      }, locale)
         .then(resolve, reject)
         .finally(() => URL.revokeObjectURL(url));
     };
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("浏览器无法加载 GIF"));
+      reject(new Error(text.errors.gifLoadFailed));
     };
     image.src = url;
   });
@@ -235,8 +249,10 @@ function recordVideo(
   fps: number,
   bitrateKbps: number,
   mode: ConversionMode,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  locale: Locale = "en"
 ): Promise<Blob> {
+  const text = getTranslations(locale);
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const video = document.createElement("video");
@@ -251,7 +267,7 @@ function recordVideo(
           recordCanvas(canvas, fps, bitrateKbps, sourceInfo.durationMs, (elapsedMs) => {
             drawSource(context, video, sourceInfo.width, sourceInfo.height, canvas.width, canvas.height, mode);
             onProgress?.(Math.min(0.95, elapsedMs / sourceInfo.durationMs));
-          })
+          }, locale)
         )
         .then(resolve, reject)
         .finally(() => {
@@ -261,7 +277,7 @@ function recordVideo(
     };
     video.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("浏览器无法播放该输入文件"));
+      reject(new Error(text.errors.videoPlayFailed));
     };
     video.src = url;
   });
@@ -272,13 +288,15 @@ function recordCanvas(
   fps: number,
   bitrateKbps: number,
   durationMs: number,
-  drawFrame: (elapsedMs: number) => void
+  drawFrame: (elapsedMs: number) => void,
+  locale: Locale = "en"
 ): Promise<Blob> {
+  const text = getTranslations(locale);
   return new Promise((resolve, reject) => {
     const stream = canvas.captureStream(fps);
     const mimeType = getVp9MimeType();
     if (!mimeType) {
-      reject(new Error("当前浏览器不支持 VP9 MediaRecorder"));
+      reject(new Error(text.errors.noVp9Recorder));
       return;
     }
     const recorder = new MediaRecorder(stream, {
@@ -295,7 +313,7 @@ function recordCanvas(
         chunks.push(event.data);
       }
     };
-    recorder.onerror = () => reject(new Error("浏览器 VP9 录制失败"));
+    recorder.onerror = () => reject(new Error(text.errors.vp9RecordFailed));
     recorder.onstop = () => {
       cancelAnimationFrame(frameTimer);
       window.clearTimeout(stopTimer);

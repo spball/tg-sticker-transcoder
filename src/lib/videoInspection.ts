@@ -1,4 +1,5 @@
 import type { VideoInspection } from "../types";
+import { detectLocale, getTranslations } from "./i18n";
 
 export function inspectVideoBlob(blob: Blob): Promise<VideoInspection> {
   return new Promise((resolve, reject) => {
@@ -24,7 +25,7 @@ export function inspectVideoBlob(blob: Blob): Promise<VideoInspection> {
     };
     video.onerror = () => {
       cleanup();
-      reject(new Error("无法读取输出视频元数据"));
+      reject(new Error(getTranslations(detectLocale()).errors.outputMetadataReadFailed));
     };
     video.src = url;
   });

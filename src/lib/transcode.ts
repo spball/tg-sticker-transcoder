@@ -14,11 +14,13 @@ import {
   recycleFFmpegRuntimeAfterJob,
   setActiveProgressHandler
 } from "./ffmpegRuntime";
+import { getTranslations, type Locale } from "./i18n";
 import { inspectVideoBlob } from "./videoInspection";
 import { transcodeWithCanvasRecorder } from "./canvasRecorder";
 
 interface TranscodeOptions {
   onProgress?: (progress: number) => void;
+  locale?: Locale;
 }
 
 interface AttemptResult {
@@ -45,10 +47,12 @@ async function transcodeFileInternal(
   mode: ConversionMode,
   options: TranscodeOptions = {}
 ): Promise<TranscodeResult> {
+  const locale = options.locale ?? "en";
+  const text = getTranslations(locale);
   let canvasError: unknown;
   if (canTryCanvasRecorder(file)) {
     try {
-      return await transcodeWithCanvasRecorder(file, mode, options.onProgress);
+      return await transcodeWithCanvasRecorder(file, mode, options.onProgress, locale);
     } catch (error) {
       canvasError = error;
       // Fall through to FFmpeg for files the browser cannot decode or record.
@@ -79,7 +83,7 @@ async function transcodeFileInternal(
       });
 
       let finalResult = result;
-      let note = result?.usedTransparentPadding ? "透明留边" : "黑色留边";
+      let note = result?.usedTransparentPadding ? text.attempts.transparentPadding : text.attempts.blackPadding;
 
       if (!result && mode === "emoji") {
         finalResult = await runEncodingAttempt({
@@ -90,7 +94,7 @@ async function transcodeFileInternal(
           fps: step.fps,
           transparentPadding: false
         });
-        note = "透明留边失败，已回退黑色留边";
+        note = text.attempts.transparentFallback;
       }
 
       if (!finalResult) {
@@ -98,7 +102,7 @@ async function transcodeFileInternal(
           bitrateKbps: step.bitrateKbps,
           fps: step.fps,
           ok: false,
-          note: "编码失败"
+          note: text.attempts.encodingFailed
         });
         continue;
       }
@@ -117,20 +121,20 @@ async function transcodeFileInternal(
       });
 
       if (ok) {
-        const output = await finishResult(finalResult.blob, outputBaseName, attempts, warnings, mode);
+        const output = await finishResult(finalResult.blob, outputBaseName, attempts, warnings, mode, locale);
         options.onProgress?.(1);
         return output;
       }
     }
 
     if (!bestResult) {
-      const canvasMessage = canvasError instanceof Error ? `浏览器录制路径失败：${canvasError.message}；` : "";
+      const canvasMessage = canvasError instanceof Error ? text.errors.canvasPathFailed(canvasError.message) : "";
       const ffmpegLogs = getRecentFFmpegLogs();
-      throw new Error(`${canvasMessage}所有 FFmpeg 编码尝试均失败${ffmpegLogs ? `：${ffmpegLogs}` : ""}`);
+      throw new Error(text.errors.allFfmpegAttemptsFailed(canvasMessage, ffmpegLogs));
     }
 
-    warnings.push("未能压缩到 256 KB 以下，保留体积最小的结果");
-    return await finishResult(bestResult.blob, outputBaseName, attempts, warnings, mode);
+    warnings.push(text.warnings.keptSmallest);
+    return await finishResult(bestResult.blob, outputBaseName, attempts, warnings, mode, locale);
   } finally {
     setActiveProgressHandler(undefined);
     await safeDelete(inputName);
@@ -150,14 +154,16 @@ async function finishResult(
   outputName: string,
   attempts: EncodingAttempt[],
   warnings: string[],
-  mode: ConversionMode
+  mode: ConversionMode,
+  locale: Locale = "en"
 ): Promise<TranscodeResult> {
+  const text = getTranslations(locale);
   try {
     const inspection = await inspectVideoBlob(blob);
-    warnings.push(...validateInspection(mode, inspection, blob.size));
+    warnings.push(...validateInspection(mode, inspection, blob.size, locale));
     return { blob, outputName, attempts, inspection, warnings };
-  } catch (error) {
-    warnings.push(error instanceof Error ? error.message : "输出视频元数据读取失败");
+  } catch {
+    warnings.push(text.errors.outputMetadataReadFailed);
     return { blob, outputName, attempts, warnings };
   }
 }
